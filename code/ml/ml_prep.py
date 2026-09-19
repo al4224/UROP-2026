@@ -32,7 +32,7 @@ BATCHES = [
 ]
 # Hand-collected pilot set: not blind, not from the sampled population, so it is
 # kept for sanity checks only and never used for training.
-PILOT = "OpenAlex_dataset.xlsx"
+PILOT = "openalex_batch_pilot_annotated_manual.xlsx"
 OUT = DATA / "ml_dataset.xlsx"
 
 MASTER_EXTRAS = ["stratum", "population_weight"]
