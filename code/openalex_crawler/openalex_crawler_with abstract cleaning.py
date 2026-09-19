@@ -5,14 +5,14 @@ Pulls a seeded random sample of Chemistry (field 16) and Mathematics (field 26)
 articles from 2016 onwards, stratified 50/50 on whether OpenAlex's SDG
 classifier tagged the work.
 
-Writes two files per batch, next to this script:
+Writes two files per batch into the data directory (see DATA_DIR):
   <prefix>_<seed>_master.xlsx      everything, including OpenAlex's SDG tags
   <prefix>_<seed>_for_coding.xlsx  blind file for annotation (no title, no tags)
 Merge coding results back onto the master on `openalex_id`.
 
 Setup, inside the activated venv:
   python -m pip install requests pandas openpyxl
-  python openalex_crawler.py
+  python code/openalex_crawler/openalex_crawler.py
 """
 
 import os
@@ -70,11 +70,13 @@ MIN_STOPWORD_SHARE = 0.10
 # language, so judge word frequencies only when there are enough words.
 MIN_WORDS_FOR_LANGUAGE = 60
 
-# Anchored to the script so a run from another directory can't start a fresh,
-# empty dedup file.
+# Anchored to the script, not the working directory, so a run from elsewhere
+# can't start a fresh, empty dedup file. Repo layout: code/openalex_crawler/
+# holds this script, data/ holds every output.
 HERE = Path(__file__).resolve().parent
+DATA_DIR = HERE.parents[1] / "data"
 OUT_PREFIX = "openalex_batch"
-PROCESSED_IDS_FILE = HERE / "processed_ids.txt"
+PROCESSED_IDS_FILE = DATA_DIR / "processed_ids.txt"
 
 # Axis 1, as revised by the PI: the full phrase alone suffices; the acronym
 # counts only alongside "sustainable"/"sustainability", which screens out SDG
@@ -306,8 +308,11 @@ def append_processed(ids):
 
 
 def main():
-    master_path = HERE / f"{OUT_PREFIX}_{SEED}_master.xlsx"
-    coding_path = HERE / f"{OUT_PREFIX}_{SEED}_for_coding.xlsx"
+    if not DATA_DIR.is_dir():
+        sys.exit(f"Data directory not found: {DATA_DIR}\n"
+                 "Set DATA_DIR at the top of the script.")
+    master_path = DATA_DIR / f"{OUT_PREFIX}_{SEED}_master.xlsx"
+    coding_path = DATA_DIR / f"{OUT_PREFIX}_{SEED}_for_coding.xlsx"
     # A rerun with the same seed draws fresh rows past the processed ones, so
     # it would silently replace a master whose rows are already out for coding.
     if master_path.exists() or coding_path.exists():
