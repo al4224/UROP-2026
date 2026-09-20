@@ -27,7 +27,7 @@ from sklearn.metrics import cohen_kappa_score
 
 from ml_baseline import DATA, load, score
 
-MODEL = "qwen3.6"          # any recent instruct model, 7B-14B, fits a 12 GB card
+MODEL = "qwen2.5:14b"          # any recent instruct model, 7B-14B, fits a 12 GB card
 OLLAMA = "http://localhost:11434/api/generate"
 CACHE = DATA / "ml_llm_cache.json"
 SCORED = DATA / "ml_errors_embed.xlsx"        # written by ml_errors.py embed
@@ -35,42 +35,97 @@ OUT = DATA / "ml_llm_predictions.xlsx"
 UNCERTAIN = (0.35, 0.65)
 TIMEOUT = 180
 
-# Condensed from annotation_ruleset_v2 sections 3 to 5. Keep it faithful: this
-# is the coder's rule, not a paraphrase to tune.
-PROMPT = """You are applying a fixed annotation rule to a research abstract.
+# Condensed from annotation_ruleset_v3, sections 3 to 9. Keep it faithful: this
+# is the coder's rule, not a paraphrase to tune. Update it when the ruleset moves.
+PROMPT = """You apply a fixed annotation rule to a research abstract from chemistry \
+or mathematics.
 
-THE TEST: Does the abstract name any real-world domain that connects to a UN \
-Sustainable Development Goal area?
+THE TEST, in two steps:
+1. Does the abstract name a REAL-WORLD THING - a domain, system, application or \
+problem - rather than only objects of study (equations, structures, datasets, \
+idealised models)?
+2. Does that thing stand in a recognised relationship to any UN Sustainable \
+Development Goal area, statable in one step, without supplying a use the abstract \
+never mentions?
 
-Two steps:
-1. Does the abstract name a real-world thing - a domain, system, application or \
-problem - as opposed to only objects of study (sequences, structures, datasets, \
-equations, idealised models)?
-2. Does that thing stand in a recognised relationship to an SDG area, statable in \
-one step, without supplying a downstream use the abstract never mentions?
+Both yes -> Y. Otherwise -> N.
 
-Both steps yes -> Y. Otherwise -> N.
+WHAT DOES NOT MATTER: the format of the work (software, guidelines, reviews, \
+editorials and empirical studies are judged identically); the depth of treatment (a \
+bare field-of-interest label, one item in a list, a motivating sentence or a \
+speculative future use all count); sustainability language (neither required nor \
+sufficient). ONE qualifying domain is enough.
 
-Qualifying domain areas include: health and medicine (drug discovery, therapeutics, \
-clinical application, diagnosis, named diseases, generic references to disease or \
-clinical conditions); food and agriculture; water and oceans; energy (storage, \
-batteries, electrocatalysis, fuels, renewables); climate (greenhouse gases, \
-emissions); pollution and toxics; green chemistry (cleaner synthesis, waste or \
-solvent reduction, atom economy, mild conditions, renewable inputs); materials and \
-waste (recycling, plastics, resource recovery); ecosystems; physical systems \
-treated as real (fluid flow, turbulence, heat conduction, diffusion, wave \
-propagation); explicit low-resource or capacity-building framing.
+QUALIFYING DOMAINS:
+- Health and medicine: drug discovery, pharmaceuticals, therapeutics, clinical \
+trials, diagnosis, epidemiology, public health, named diseases, generic references \
+to disease or clinical conditions. Drug discovery, medicinal chemistry and \
+pharmacology count IN ANY FORM.
+- Education: classroom interventions, teacher training, student achievement, \
+curriculum, learning materials, assessment.
+- Food and agriculture: crops, nutrition, food safety and authenticity, \
+agrochemistry, herbicides, farming practice.
+- Water and oceans: water quality, drinking water, groundwater, coastal systems, \
+water treatment.
+- Energy: storage, batteries, hydrogen, fuels, electrocatalysis, renewables, \
+energy-efficiency gains.
+- Climate: greenhouse gases, emissions, urban heat, atmospheric systems.
+- Pollution and toxics: contaminants, heavy metals, toxic gases, wastewater \
+pollutants.
+- Materials and waste: recycling, waste valorisation, resource recovery.
+- Ecosystems: biodiversity, habitats, forestry, species.
+- Governance and institutions: fraud detection, data manipulation, transparency, \
+access to medicines, patent or monopoly effects.
+- Economy and work: macroeconomic activity, employment outcomes, human capital, \
+smallholder livelihoods.
+- Social equity: demographic disparities by race, sex or income.
+- Green chemistry and physical systems: see the two special rules below.
 
-What does NOT matter: the format of the work (software, reporting standard, \
-review and empirical study are judged identically); the depth of treatment (a \
-single motivating sentence or one item in a list of applications counts as much as \
-the whole paper being about it); sustainability language (neither required nor \
-sufficient). One qualifying domain is enough.
+GREEN CHEMISTRY counts (Y): a named green solvent or water as solvent; \
+solvent-free or mechanochemical; recyclable or reused catalyst, reagent or \
+auxiliary; air or oxygen as oxidant; metal-free or oxidant-free stated as a \
+feature; specified mild conditions, low pressure or room temperature; one-pot or \
+pot economy; atom or step economy; visible-light or photochemical driving of a \
+synthesis; eliminating a purification step such as avoiding column chromatography; \
+the explicit words green, benign, clean, waste or sustainable.
+It does NOT count on generic yield or convenience language alone: "efficient", \
+"good yields", "high selectivity", "operationally simple", "readily available \
+substrates", "bench-stable".
 
-What remains N: general-purpose methods and tools with no stated domain; \
-fundamental molecular or structural biology naming no applied domain; idealised or \
-toy systems; fundamental chemistry with no application and no efficiency or \
-cleanliness claim.
+PHYSICAL SYSTEMS: a named EQUATION CLASS is not a named PHYSICAL SYSTEM. \
+"Parabolic equations", "nonlinear Schrodinger equations", "convection-diffusion \
+problem" are mathematical objects -> N. "Shallow-water waves", "turbulent channel \
+flow", "groundwater transport" name something real -> Y. A real physical system \
+must still sit plausibly near climate, energy, water or another goal area: \
+rarefied gas venting into a vacuum is genuine gas flow but too far from any goal \
+-> N. Idealised models (Ising, harmonic oscillator, ASEP, random matrices) -> N, \
+and "flow" in its differential-geometry sense -> N.
+
+INDUSTRIAL WORK is neither qualifying nor disqualifying. Ask only whether the \
+specific application points toward an SDG outcome: does it make something cleaner, \
+more efficient, less wasteful or more accessible, or is it simply making a \
+product? Ethylene purification, lubricant thermal stability, biomanufacturing \
+yield and jet fuel contaminant removal are Y. Commodity plastics production, \
+photo-RDRP for advanced manufacturing, industrial heat treatment and military \
+explosives are N.
+
+REMAINS N: general-purpose methods, tools and statistical tutorials naming no \
+domain; fundamental molecular or structural biology with no stated application \
+(protein structure prediction, sequence alignment, cell atlases); pure synthetic \
+or structural chemistry with no application and no green-chemistry descriptor; \
+astronomy and cosmology; technology named as a bare capability with no one-step \
+goal link (AI robustness, encryption, sensing, scintillators); photocatalysis \
+named as a material property with no stated use; "biologically significant" or \
+"biologically active" with no named activity, target or disease; nanomaterial \
+biodegradation framed purely as a biochemical finding; bare "economic \
+applications" as a methodological justification.
+
+SETTLED PRECEDENTS: model-organism plant under temperature stress -> Y; \
+financial-statement or government-data fraud detection -> Y; social-science use \
+naming race, sex or education -> Y; statistics demonstrated on epidemiological or \
+clinical-trial data -> Y; statistics with no health context (survival analysis, \
+sample size) -> N; antioxidant chemistry naming a food or health application -> Y, \
+naming none -> N; nuclear-analogue geochemistry with no waste framing -> N.
 
 ABSTRACT:
 {abstract}
