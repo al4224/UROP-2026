@@ -76,11 +76,11 @@ PROCESSED_IDS_FILE = DATA_DIR / "processed_ids.txt"
 
 # Axis 1, as revised by the PI: the full phrase alone suffices; the acronym
 # counts only alongside "sustainable"/"sustainability", which screens out SDG
-# used as an unrelated abbreviation. The acronym ends at any non-letter rather
-# than a word boundary so that numbered forms like "SDG13" still match.
+# used as an unrelated abbreviation. Nothing may precede the acronym, but
+# anything may follow it, so "SDGs" and "SDG13" match while "xSDG" does not.
 SDG_PHRASE = re.compile(r"\bsustainable\s+development\s+goals?\b", re.IGNORECASE)
-SDG_ACRONYM = re.compile(r"\bSDGs?(?![a-z])", re.IGNORECASE)
-SUSTAIN_WORD = re.compile(r"\bsustainab(?:le|ility)\b", re.IGNORECASE)
+SDG_ACRONYM = re.compile(r"\bSDG", re.IGNORECASE)
+SUSTAIN_WORD = re.compile(r"\bsustainab(?:le|ly|ility)\b", re.IGNORECASE)
 
 API = "https://api.openalex.org/works"
 PER_PAGE = 100                     # documented maximum
@@ -107,7 +107,7 @@ MASTER_COLS = ["openalex_id", "title", "year", "abstract", "record_quality",
 # Title and SDG tags stay out: they would anchor the coder's Axis 2 judgement.
 CODING_COLS = ["openalex_id", "year", "abstract", "record_quality", "subfield",
                "field", "domain"]
-CODER_COLS = ["contributing_idea", "evidence_sentence", "flagged"]
+CODER_COLS = ["contributing_idea", "evidence_sentence", "flagged", "flag_reason"]
 
 # ----------------------------------------------------------------------------
 # API
