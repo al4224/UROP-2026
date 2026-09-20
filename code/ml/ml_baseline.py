@@ -70,8 +70,12 @@ def predict_abstract_tfidf(train, test, _sentences):
     return model.predict(test["abstract"])
 
 
-def predict_sentence_tfidf(train, test, sentences):
-    """Train on single sentences, then judge an abstract by its best sentence."""
+def sentence_scores(train, test, sentences):
+    """
+    Train on single sentences, then score an abstract by its best sentence.
+    Sentences labelled -1 are unusable: they sit in a Y abstract and may or may
+    not qualify, so they are neither positives nor negatives.
+    """
     known = sentences[sentences["openalex_id"].isin(train["openalex_id"])]
     known = known[known["sentence_label"].isin([0, 1])]
     model = tfidf_model().fit(known["sentence"], known["sentence_label"])
@@ -79,7 +83,11 @@ def predict_sentence_tfidf(train, test, sentences):
     scored = sentences[sentences["openalex_id"].isin(test["openalex_id"])].copy()
     scored["p"] = model.predict_proba(scored["sentence"])[:, 1]
     best = scored.groupby("openalex_id")["p"].max()
-    return [int(best.get(i, 0.0) >= 0.5) for i in test["openalex_id"]]
+    return pd.Series([best.get(i, 0.0) for i in test["openalex_id"]], index=test.index)
+
+
+def predict_sentence_tfidf(train, test, sentences):
+    return (sentence_scores(train, test, sentences) >= 0.5).astype(int)
 
 
 MODELS = {
