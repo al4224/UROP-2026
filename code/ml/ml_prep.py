@@ -29,6 +29,8 @@ from openalex_crawler import close_split_hyphens, quality, sdg_keyword, strip_bo
 BATCHES = [
     ("openalex_batch_20260907_annotated_revised.xlsx",
      "openalex_batch_20260907_master.xlsx", "dev"),
+    ("openalex_batch_20260920_annotated_revised.xlsx",
+     "openalex_batch_20260920_master.xlsx", "test"),
 ]
 # Hand-collected pilot set: not blind, not from the sampled population, so it is
 # kept for sanity checks only and never used for training.

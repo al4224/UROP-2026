@@ -20,6 +20,7 @@ Run:  python code/ml/ml_llm.py
 import json
 import re
 import sys
+import time
 
 import pandas as pd
 import requests
@@ -33,7 +34,12 @@ CACHE = DATA / "ml_llm_cache.json"
 SCORED = DATA / "ml_errors_embed.xlsx"        # written by ml_errors.py embed
 OUT = DATA / "ml_llm_predictions.xlsx"
 UNCERTAIN = (0.35, 0.65)
-TIMEOUT = 180
+# Triage only needs the LLM inside the uncertain band, which is about a third of
+# the rows. Set to False to judge everything and score the LLM on its own.
+ONLY_UNCERTAIN = True
+TIMEOUT = 600          # the first call also loads the model into memory
+MAX_TOKENS = 400       # the answer is one short JSON object; stop runaway output
+THINKING = False       # reasoning models otherwise spend minutes before answering
 
 # Condensed from annotation_ruleset_v3, sections 3 to 9. Keep it faithful: this
 # is the coder's rule, not a paraphrase to tune. Update it when the ruleset moves.
@@ -135,13 +141,18 @@ Answer with JSON only, no other text:
 empty if N"}}"""
 
 
-def ask(abstract):
-    response = requests.post(OLLAMA, timeout=TIMEOUT, json={
+def ask(abstract, think=THINKING):
+    payload = {
         "model": MODEL,
         "prompt": PROMPT.format(abstract=abstract),
         "stream": False,
-        "options": {"temperature": 0},
-    })
+        "options": {"temperature": 0, "num_predict": MAX_TOKENS},
+    }
+    if think is not None:
+        payload["think"] = think
+    response = requests.post(OLLAMA, timeout=TIMEOUT, json=payload)
+    if response.status_code == 400 and "think" in response.text.lower():
+        return ask(abstract, think=None)      # model has no thinking mode to turn off
     response.raise_for_status()
     return response.json()["response"]
 
@@ -163,12 +174,17 @@ def judge(rows):
     cache = json.loads(CACHE.read_text()) if CACHE.exists() else {}
     todo = [r for r in rows.itertuples() if r.openalex_id not in cache]
     print(f"{len(cache)} cached, {len(todo)} to ask")
+    started = time.time()
     for n, row in enumerate(todo, 1):
         label, sentence = parse(ask(row.abstract))
         cache[row.openalex_id] = {"label": label, "sentence": sentence}
+        if n == 1:
+            each = time.time() - started
+            print(f"  first answer in {each:.0f}s (includes loading the model); "
+                  f"{len(todo)} rows is roughly {each * len(todo) / 60:.0f} min at that rate")
         if n % 10 == 0 or n == len(todo):
             CACHE.write_text(json.dumps(cache))
-            print(f"  {n}/{len(todo)}")
+            print(f"  {n}/{len(todo)}  ({(time.time() - started) / n:.1f}s per row)")
     CACHE.write_text(json.dumps(cache))
     return cache
 
@@ -188,26 +204,33 @@ def main():
     dev = dev.merge(scored[["openalex_id", "score", "predicted"]]
                     .rename(columns={"predicted": "embed_pred"}), on="openalex_id")
 
-    answers = judge(dev)
-    dev["llm_label"] = [answers[i]["label"] for i in dev["openalex_id"]]
-    dev["llm_sentence"] = [answers[i]["sentence"] for i in dev["openalex_id"]]
-    unreadable = (dev["llm_label"] == "").sum()
+    low, high = UNCERTAIN
+    uncertain = dev["score"].between(low, high)
+    asked = dev[uncertain] if ONLY_UNCERTAIN else dev
+
+    answers = judge(asked)
+    dev["llm_label"] = [answers.get(i, {}).get("label", "") for i in dev["openalex_id"]]
+    dev["llm_sentence"] = [answers.get(i, {}).get("sentence", "") for i in dev["openalex_id"]]
+    unreadable = int(((dev["llm_label"] == "") & dev["openalex_id"].isin(answers)).sum())
     if unreadable:
         print(f"WARNING: {unreadable} replies could not be parsed; counted as N")
     dev["llm_pred"] = (dev["llm_label"] == "Y").astype(int)
 
-    report("LLM alone", dev["y"], dev["llm_pred"])
+    if ONLY_UNCERTAIN:
+        report("LLM, uncertain band only", dev.loc[uncertain, "y"], dev.loc[uncertain, "llm_pred"])
+        report("Embeddings, same rows", dev.loc[uncertain, "y"], dev.loc[uncertain, "embed_pred"])
+    else:
+        report("LLM alone", dev["y"], dev["llm_pred"])
     report("Embeddings alone", dev["y"], dev["embed_pred"])
 
-    low, high = UNCERTAIN
-    uncertain = dev["score"].between(low, high)
     combined = dev["embed_pred"].where(~uncertain, dev["llm_pred"])
     report(f"Triage: embeddings outside {low}-{high}, LLM inside", dev["y"], combined)
     print(f"  ({uncertain.sum()} of {len(dev)} rows sent to the LLM)")
 
-    print("\nAgreement between the two models: "
-          f"{(dev['llm_pred'] == dev['embed_pred']).mean():.1%} "
-          f"(kappa {cohen_kappa_score(dev['llm_pred'], dev['embed_pred']):.3f})")
+    both = dev[dev["openalex_id"].isin(answers)]
+    print("\nAgreement between the two models, on the rows asked: "
+          f"{(both['llm_pred'] == both['embed_pred']).mean():.1%} "
+          f"(kappa {cohen_kappa_score(both['llm_pred'], both['embed_pred']):.3f})")
 
     dev.to_excel(OUT, index=False)
     print(f"\nWrote {OUT}")
