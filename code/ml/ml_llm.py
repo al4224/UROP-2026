@@ -27,7 +27,7 @@ from sklearn.metrics import cohen_kappa_score
 
 from ml_baseline import DATA, load, score
 
-MODEL = "qwen2.5:14b"          # any recent instruct model, 7B-14B, fits a 12 GB card
+MODEL = "qwen3.6:latest"          # any recent instruct model, 7B-14B, fits a 12 GB card
 OLLAMA = "http://localhost:11434/api/generate"
 CACHE = DATA / "ml_llm_cache.json"
 SCORED = DATA / "ml_errors_embed.xlsx"        # written by ml_errors.py embed

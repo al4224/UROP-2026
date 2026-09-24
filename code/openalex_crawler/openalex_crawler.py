@@ -88,17 +88,27 @@ SAMPLE_MAX = 10_000                # documented maximum for `sample`
 SELECT = ("id,doi,title,publication_year,abstract_inverted_index,primary_topic,"
           "sustainable_development_goals,open_access,cited_by_count")
 
-FILTER_ANY_ABSTRACT = ",".join([
-    "primary_topic.field.id:" + "|".join(map(str, FIELD_IDS)),
-    f"publication_year:>{YEAR_FROM - 1}",
-    f"type:{WORK_TYPE}",
-    f"language:{LANGUAGE}",
-])
-FILTER_BASE = FILTER_ANY_ABSTRACT + ",has_abstract:true"
 # OpenAlex attaches only goals scoring above 0.4, so "has any goal" is the whole
 # tagged definition and there is no local threshold to apply.
-FILTER_TAGGED = FILTER_BASE + ",sustainable_development_goals.id:" + "|".join(
-    map(str, range(1, 18)))
+TAGGED_CLAUSE = "sustainable_development_goals.id:" + "|".join(map(str, range(1, 18)))
+
+
+def population_filter(field_ids=FIELD_IDS, abstract=True, tagged=False):
+    """The study population, narrowable by field so counts can be broken down."""
+    parts = ["primary_topic.field.id:" + "|".join(map(str, field_ids)),
+             f"publication_year:>{YEAR_FROM - 1}",
+             f"type:{WORK_TYPE}",
+             f"language:{LANGUAGE}"]
+    if abstract:
+        parts.append("has_abstract:true")
+    if tagged:
+        parts.append(TAGGED_CLAUSE)
+    return ",".join(parts)
+
+
+FILTER_ANY_ABSTRACT = population_filter(abstract=False)
+FILTER_BASE = population_filter()
+FILTER_TAGGED = population_filter(tagged=True)
 
 MASTER_COLS = ["openalex_id", "title", "year", "abstract", "record_quality",
                "subfield", "field", "domain", "openalex_sdg_tag",
